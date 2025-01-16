@@ -8,6 +8,7 @@ sys.path.append('./src/models')
 from weather_station import WeatherDataset
 from lstm import LSTMModel
 import pandas as pd
+import numpy as np
 
 from sklearn.preprocessing import MinMaxScaler
 
@@ -21,7 +22,7 @@ def trainLSTM():
     criterion = nn.MSELoss()
     optimizer = optim.Adam(model.parameters(), lr=0.001)
 
-    train_loader = DataLoader(WeatherDataset(train=True, timesteps=50, ), batch_size=32, shuffle=True)
+    train_loader = DataLoader(WeatherDataset(train=True, timesteps=15), batch_size=32, shuffle=True, drop_last=False)
 
     epochs = 500
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -35,11 +36,13 @@ def trainLSTM():
             loss.backward()
             optimizer.step()
 
-        print(f'Epoch [{epoch + 1}/{epochs}], Loss: {loss.item():.4f}')
+        print(f'Epoch [{epoch + 1}/{epochs}]')
+            #   , Loss: {loss.item():.4f}')
 
   
-    torch.save(model.state_dict(), './models/lstm_weather_model.pth')
+    torch.save(model, './models/lstm_weather_model.pth')
 
+w_dataset = WeatherDataset(train=False, timesteps=15)
 
 def testLSTM():
         # Imposta il dispositivo
@@ -50,18 +53,23 @@ def testLSTM():
     output_dim = input_dim 
 
     # Inizializza il modello e carica i pesi
-    model = LSTMModel(input_dim=input_dim, output_dim=output_dim).to(device)
-    model.load_state_dict(torch.load('./models/lstm_weather_model.pth'))
-    test_loader = DataLoader(WeatherDataset(train=False, timesteps=5), batch_size=1, shuffle=False)
-
+    # model = LSTMModel(input_dim=input_dim, output_dim=output_dim).to(device)
+    model = torch.load('./models/lstm_weather_model.pth', weights_only=False)
+    test_loader = DataLoader(w_dataset, batch_size=1, shuffle=False, drop_last=False)
+    scaler = w_dataset.scaler
     model.eval()
+    criterion = nn.MSELoss()
     with torch.no_grad():
         predictions = []
         actuals = []
+        loss_list = []
         for inputs, targets in test_loader:
             outputs = model(inputs)
-            predictions.append(outputs.numpy())
-            actuals.append(targets.numpy())
+            loss = criterion(outputs, targets)
+            predictions.append(scaler.inverse_transform(outputs.numpy()))
+            actuals.append(scaler.inverse_transform(targets.numpy()))
+            loss_list.append(loss.item())
+        print(np.mean(loss_list))
 
     # Salva le predizioni e i target per la valutazione in un file
     results = {
