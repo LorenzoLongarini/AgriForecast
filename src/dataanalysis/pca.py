@@ -42,7 +42,7 @@ filtered_data = selector.fit_transform(numeric_data)
 filtered_columns = numeric_data.columns[selector.get_support()]
 
 # Calcola l'importanza delle feature rispetto all'intero dataset
-model = RandomForestRegressor()
+model = RandomForestRegressor(random_state=42)
 model.fit(numeric_data, numeric_data.mean(axis=1))  # Usa la media delle colonne come target fittizio
 importances = model.feature_importances_
 

@@ -161,3 +161,9 @@ cython_debug/
 
 assets/*
 !assets/.gitkeep
+!assets/results
+.env
+src/models/lstm-attempt.py
+src/models/pyESN.py
+main_attempt.py
+src/test/test1.ipynb

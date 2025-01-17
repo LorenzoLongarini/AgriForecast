@@ -1,87 +1,54 @@
-import torch
-import torch.optim as optim
-import torch.nn as nn
-from torch.utils.data import DataLoader
 import sys
-sys.path.append('./src/dataloader')
-sys.path.append('./src/models')
-from weather_station import WeatherDataset
-from lstm import LSTMModel
-import pandas as pd
-import numpy as np
-
-from sklearn.preprocessing import MinMaxScaler
-
-
-def trainLSTM():
-    input_dim = len(pd.read_excel('./assets/MisureAgugliano.xlsx').columns) - 1
-    output_dim = input_dim 
-
-    model = LSTMModel(input_dim=input_dim, output_dim=output_dim)
-
-    criterion = nn.MSELoss()
-    optimizer = optim.Adam(model.parameters(), lr=0.001)
-
-    train_loader = DataLoader(WeatherDataset(train=True, timesteps=15), batch_size=32, shuffle=True, drop_last=False)
-
-    epochs = 500
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
-    for epoch in range(epochs):
-        for inputs, targets in train_loader:
-            inputs, targets = inputs.to(device), targets.to(device) 
-            outputs = model(inputs)
-            loss = criterion(outputs, targets)
-            optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
-
-        print(f'Epoch [{epoch + 1}/{epochs}]')
-            #   , Loss: {loss.item():.4f}')
-
-  
-    torch.save(model, './models/lstm_weather_model.pth')
-
-w_dataset = WeatherDataset(train=False, timesteps=15)
-
-def testLSTM():
-        # Imposta il dispositivo
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    
-    # Determina input e output dimension
-    input_dim = len(pd.read_excel('./assets/MisureAgugliano.xlsx').columns) - 1
-    output_dim = input_dim 
-
-    # Inizializza il modello e carica i pesi
-    # model = LSTMModel(input_dim=input_dim, output_dim=output_dim).to(device)
-    model = torch.load('./models/lstm_weather_model.pth', weights_only=False)
-    test_loader = DataLoader(w_dataset, batch_size=1, shuffle=False, drop_last=False)
-    scaler = w_dataset.scaler
-    model.eval()
-    criterion = nn.MSELoss()
-    with torch.no_grad():
-        predictions = []
-        actuals = []
-        loss_list = []
-        for inputs, targets in test_loader:
-            outputs = model(inputs)
-            loss = criterion(outputs, targets)
-            predictions.append(scaler.inverse_transform(outputs.numpy()))
-            actuals.append(scaler.inverse_transform(targets.numpy()))
-            loss_list.append(loss.item())
-        print(np.mean(loss_list))
-
-    # Salva le predizioni e i target per la valutazione in un file
-    results = {
-        'predictions': predictions,
-        'actuals': actuals
-    }
-    torch.save(results, './models/test_results.pth')
-    print('Risultati di test salvati per la valutazione.')
-
-def main():
-    trainLSTM()
-    testLSTM()
+import os
+from dotenv import load_dotenv
+sys.path.append("./src/dataloader")
+sys.path.append("./src/models")
+from data_preparation import prepare_data
+from arima import train_arima_all_features
+from timegpt import train_timegpt_all_features
+from sarima import train_sarima_all_features
+from lstm import train_lstm_all_features
+from esn import train_esn_all_features
+from lagllama import train_lag_llama_all_features
 
 if __name__ == "__main__":
-    main()
+    file_path = ".//assets//datimerged//A84041A9018859AC_merged.csv"
+
+    load_dotenv()
+    API_KEY = os.getenv("API_KEY")
+    
+
+    train_data, test_data = prepare_data(file_path, keep_dateandtime=False)
+
+    # print(train_data.head())
+    
+    # print("Testing ARIMA...")
+    # arima_metrics, arima_overall_mae = train_arima_all_features(train_data, test_data)
+    # arima_metrics.to_csv("arima_metrics.csv", index=False)
+    # print(f"ARIMA Overall MAE: {arima_overall_mae}")
+    
+    # print("Testing SARIMA...")
+    # sarima_metrics, sarima_overall_mae = train_sarima_all_features(train_data, test_data)
+    # sarima_metrics.to_csv("sarima_metrics.csv", index=False)
+    # print(f"SARIMA Overall MAE: {sarima_overall_mae}")
+    
+    # print("Testing LSTM...")
+    # lstm_metrics, lstm_overall_mae = train_lstm_all_features(train_data, test_data)
+    # lstm_metrics.to_csv("lstm_metrics.csv", index=False)
+    # print(f"LSTM Overall MAE: {lstm_overall_mae}")
+    
+    # print("Testing ESN...")
+    # esn_metrics, esn_overall_mae = train_esn_all_features(train_data, test_data)
+    # esn_metrics.to_csv("esn_metrics.csv", index=False)
+    # print(f"ESN Overall MAE: {esn_overall_mae}")
+
+    # print("Testing TimeGPT...")
+    # timegpt_metrics, timegpt_overall_mae = train_timegpt_all_features(train_data, test_data, API_KEY, fine_tune=False, preprocess=True)
+    # timegpt_metrics.to_csv("timegpt_metrics.csv", index=False)
+    # print(f"TimeGPT Overall MAE: {timegpt_overall_mae}")
+    
+    print("Testing Lag-Llama...")
+    model_name = "facebook/opt-125m"  # Sostituisci con un modello valido di Hugging Face
+    lag_llama_metrics, lag_llama_overall_mae = train_lag_llama_all_features(train_data, test_data, model_name, fine_tune=False)
+    lag_llama_metrics.to_csv("lag_llama_metrics.csv", index=False)
+    print(f"Lag-Llama Overall MAE: {lag_llama_overall_mae}")

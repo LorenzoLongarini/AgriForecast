@@ -1,32 +1,56 @@
-import torch
-import torch.nn as nn
+import pandas as pd
+import numpy as np
+from sklearn.preprocessing import MinMaxScaler
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import LSTM, Dense
+from sklearn.metrics import mean_absolute_error, mean_squared_error
+from tqdm.keras import TqdmCallback
 
+def train_lstm_all_features(train_data, test_data, look_back=10, epochs=10, batch_size=32):
 
-class LSTMModel(nn.Module):
-    def __init__(self, input_dim, output_dim ,hidden_dim = 64, layer_dim = 2):
-        super(LSTMModel, self).__init__()
-        self.hidden_dim = hidden_dim
-        self.layer_dim = layer_dim
-        self.lstm = nn.LSTM(input_dim, hidden_dim, layer_dim, batch_first=True)
-        self.fc = nn.Linear(hidden_dim, output_dim)
-        self.h0 = None
-        self.c0 = None
+    metrics = []
+    for feature in train_data.columns:
 
-    def predict_one_stateful(self, x):
-        o, h0, c0 = self.forward(x, self.h0, self.c0, return_states=True)
-        self.h0 = h0
-        self.c0 = c0
-        return o
+        train_series = train_data[feature].values.reshape(-1, 1)
+        test_series = test_data[feature].values.reshape(-1, 1)
 
-    def forward(self, x, h0=None, c0=None, return_states = False):
-        if h0 is None:
-            h0 = torch.zeros(self.layer_dim, x.size(0), self.hidden_dim, requires_grad=True)
-        if c0 is None:
-            c0 = torch.zeros(self.layer_dim, x.size(0), self.hidden_dim, requires_grad=True)
-        
-        out, (hn, cn) = self.lstm(x, (h0, c0))
-        out = self.fc(out[:, -1, :]) 
-        if return_states:
-            return out, h0, c0
-        else:
-            return out
+        scaler = MinMaxScaler()
+        scaled_train = scaler.fit_transform(train_series)
+        scaled_test = scaler.transform(test_series)
+
+        def create_dataset(data, look_back):
+            X, y = [], []
+            for i in range(len(data) - look_back):
+                X.append(data[i:i + look_back])
+                y.append(data[i + look_back])
+            return np.array(X), np.array(y)
+
+        X_train, y_train = create_dataset(scaled_train, look_back)
+        X_test, y_test = create_dataset(scaled_test, look_back)
+
+        model = Sequential([
+            LSTM(50, input_shape=(look_back, 1), return_sequences=True),
+            LSTM(50),
+            Dense(1)
+        ])
+        model.compile(optimizer='adam', loss='mse')
+
+        model.fit(
+            X_train, 
+            y_train, 
+            epochs=epochs, 
+            batch_size=batch_size, 
+            verbose=1,
+            callbacks=[TqdmCallback(verbose=1)])
+
+        predictions = model.predict(X_test)
+        predictions = scaler.inverse_transform(predictions)  
+        y_test = scaler.inverse_transform(y_test.reshape(-1, 1)) 
+
+        mae = mean_absolute_error(y_test, predictions)
+        rmse = np.sqrt(mean_squared_error(y_test, predictions))
+        metrics.append({'Feature': feature, 'MAE': mae, 'RMSE': rmse})
+
+    metrics_df = pd.DataFrame(metrics)
+    overall_mae = metrics_df['MAE'].mean()
+    return metrics_df, overall_mae
