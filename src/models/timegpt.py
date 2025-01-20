@@ -2,6 +2,8 @@ import pandas as pd
 from nixtla import NixtlaClient
 from sklearn.metrics import mean_absolute_error, mean_squared_error
 import numpy as np
+from callbacks import CallbackHandler
+
 
 def preprocess_time_column(data, time_col):
     data[time_col] = pd.to_datetime(data[time_col])
@@ -25,7 +27,9 @@ def preprocess_time_column(data, time_col):
 def train_timegpt_all_features(train_data, test_data, api_key, fine_tune=False, preprocess=True, h_len = 24):
 
     client = NixtlaClient(api_key=api_key)
+    
     metrics = []
+    metrics_callback = CallbackHandler()
 
     timestamp_col = None
     for col in train_data.columns:
@@ -44,11 +48,10 @@ def train_timegpt_all_features(train_data, test_data, api_key, fine_tune=False, 
         if feature == timestamp_col:
             continue 
 
-        # Creazione del DataFrame con formato richiesto da TimeGPT
         train_series = train_data[[timestamp_col, feature]].rename(columns={timestamp_col: "ds", feature: "y"})
         test_series = test_data[[timestamp_col, feature]].rename(columns={timestamp_col: "ds", feature: "y"})
 
-        print(len(test_series), len(train_series))
+        # print(len(test_series), len(train_series))
 
         forecast_args = {
             "df": train_series,
@@ -59,20 +62,24 @@ def train_timegpt_all_features(train_data, test_data, api_key, fine_tune=False, 
             forecast_args["finetune_steps"] = 5 
             forecast_args["finetune_depth"] = 2 
 
-        # Previsione con TimeGPT
+        metrics_callback.start()
         forecast = client.forecast(**forecast_args)
+        metrics_callback.stop()
+        test_efficency_metric = metrics_callback.collect(key = 'test')
+
         
-        print(f"Forecast for feature {feature}:")
-        print(forecast.head())
+        # print(f"Forecast for feature {feature}:")
+        # print(forecast.head())
 
         predicted_col = "y" if "y" in forecast.columns else forecast.columns[-1]
 
-        # Calcolo degli errori
         mae = mean_absolute_error(test_series["y"], forecast[predicted_col])
         rmse = np.sqrt(mean_squared_error(test_series["y"], forecast[predicted_col]))
-        metrics.append({'Feature': feature, 'MAE': mae, 'RMSE': rmse})
+        metrics.append({'Feature': feature, 'MAE': mae, 'RMSE': rmse,  **test_efficency_metric})
 
+    white_list = [ 'MAE', 'RMSE'] + list(test_efficency_metric.keys())
     metrics_df = pd.DataFrame(metrics)
-    overall_mae = metrics_df['MAE'].mean()
-    return metrics_df, overall_mae
+    overall = {c: metrics_df[c].mean() for c in white_list}
+
+    return metrics_df, overall
 

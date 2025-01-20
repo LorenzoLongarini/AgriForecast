@@ -19,7 +19,7 @@ numeric_data = numeric_data.drop(columns=['dateandtime', 'hout', 'id', 'hour'], 
 numeric_data = numeric_data.dropna()
 
 # Calcolo delle matrici di correlazione
-correlation_methods = ['pearson', 'spearman', 'kendall']
+correlation_methods = ['pearson', 'spearman']
 correlation_matrices = {method: numeric_data.corr(method=method) for method in correlation_methods}
 
 # Visualizzazione e salvataggio delle heatmap

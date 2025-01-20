@@ -161,9 +161,12 @@ cython_debug/
 
 assets/*
 !assets/.gitkeep
-!assets/results
+!assets/results/.gitkeep
 .env
 src/models/lstm-attempt.py
 src/models/pyESN.py
 main_attempt.py
 src/test/test1.ipynb
+lag-llama.ckpt
+lightning_logs/
+torchdyno

@@ -2,7 +2,7 @@ import pandas as pd
 import numpy as np
 import torch
 from tqdm import tqdm
-from gluonts.evaluation import make_evaluation_predictions
+from gluonts.evaluation import make_evaluation_predictions, Evaluator
 from gluonts.dataset.pandas import PandasDataset
 
 import matplotlib.pyplot as plt
@@ -10,57 +10,26 @@ import matplotlib.dates as mdates
 
 from lag_llama.gluon.estimator import LagLlamaEstimator
 from gluonts.dataset.common import ListDataset
-
-from callbacks import CallbackHandler
-
-
-# Se il tuo repo è locale o specifico, fai la pip install da git, per esempio:
 # pip install lag-llama "git+https://github.com/time-series-foundation-models/lag-llama.git@update-gluonts"
 # huggingface-cli download time-series-foundation-models/Lag-Llama lag-llama.ckpt --local-dir ./path/to/save/directory
-
-
-class PartialFineTuneLagLlamaEstimator(LagLlamaEstimator):
-    """
-    Sottoclasse di LagLlamaEstimator che congela tutti i layer
-    tranne gli ultimi 2.
-    """
-    def create_lightning_module(self):
-        # Recupera il LightningModule di base
-        lightning_module = super().create_lightning_module()
-        model = lightning_module.model  # Il modello PyTorch effettivo (tipo Llama)
-
-        # 1. Congela TUTTI i parametri
-        for param in model.parameters():
-            param.requires_grad = False
-
-        # 2. Sblocca (unfreeze) solo gli ultimi 2 layer
-        # ATTENZIONE: verifica che 'model.transformer.h' sia il nome giusto
-        # per la lista di blocchi (es: `model.layers` o `model.transformer.h`).
-        # Se il tuo modello ha 12 layer, troverai h[0]..h[11].
-        # Qui sblocchiamo solo h[-2] e h[-1].
-        for layer in model.transformer.h[-2:]:
-            for param in layer.parameters():
-                param.requires_grad = True
-
-        return lightning_module
-
 
 def df_to_pandas_dataset(df, date_col=None, target_col=None, freq="1H"):
     df[date_col] = pd.to_datetime(df[date_col])
     df = df.set_index(date_col).sort_index()
     df = df.asfreq(freq)
 
-    # Interpolazione sui missing
+    # Interpolation
     if df.isnull().values.any():
-        print(f"[WARNING] Missing data in '{target_col}'. Filling with interpolation.")
+        print(f"[WARNING] Missing data detected in '{target_col}'. Filling with interpolation.")
         df = df.interpolate(method="time")
-
-    # Crea un ListDataset di GluonTS
+    # GluonTS ListDataset
     dataset = ListDataset(
         [{"start": df.index[0], "target": df[target_col].values}],
         freq=freq
     )
+    
     return dataset
+
 
 
 def train_lag_llama_all_features(
@@ -77,38 +46,34 @@ def train_lag_llama_all_features(
 ):
     device = torch.device(device if torch.cuda.is_available() else "cpu")
 
-    # Carica il checkpoint
+    # Carichiamo il checkpoint
     ckpt = torch.load(ckpt_path, map_location=device)
     estimator_args = ckpt["hyper_parameters"]["model_kwargs"]
 
-    # Selezioniamo le feature numeriche
+    # Selezioniamo le feature numeriche (escludendo eventuali date)
     numeric_cols = train_data.select_dtypes(include=[np.number]).columns
 
     all_metrics = []
-    metrics_callback = CallbackHandler()
 
     for feature in tqdm(numeric_cols, desc="Iterating over numeric features"):
 
-        # Crea i dataset per la singola feature
         train_dataset = df_to_pandas_dataset(
             train_data,
             date_col=date_col,
             target_col=feature,
-            freq=freq
+            freq=freq,
+            # item_id=f"{feature}"
         )
         test_dataset = df_to_pandas_dataset(
             test_data,
             date_col=date_col,
             target_col=feature,
-            freq=freq
+            freq=freq,
+            # item_id=f"{feature}"
         )
 
-        # Se fine_tune = True -> uso la classe che congela tutti i layer
-        # tranne gli ultimi 2. Altrimenti, uso la classe standard.
-        EstimatorClass = PartialFineTuneLagLlamaEstimator if fine_tune else LagLlamaEstimator
-
-        # Inizializza l'estimator
-        estimator = EstimatorClass(
+        # Initialize the estimator
+        estimator = LagLlamaEstimator(
             ckpt_path=ckpt_path,
             prediction_length=prediction_length,
             context_length=context_length,
@@ -124,7 +89,7 @@ def train_lag_llama_all_features(
             batch_size=64,
             num_parallel_samples=20,
 
-            # Decommenta se vuoi usare rope scaling
+            # Decomment to use rope scaling
             # rope_scaling={
             #     "type": "linear",
             #     "factor": max(1.0, (context_length + prediction_length) / estimator_args["context_length"]),
@@ -133,34 +98,24 @@ def train_lag_llama_all_features(
             trainer_kwargs={"max_epochs": max_epochs} if fine_tune else None
         )
 
-        # Se fine_tune=True, scatta l'allenamento con i layer parzialmente scongelati
         if fine_tune:
-            metrics_callback.start()
             predictor = estimator.train(train_dataset, cache_data=True, shuffle_buffer_length=1000)
-            metrics_callback.stop()
-            train_efficency_metric = metrics_callback.collect(key = 'train')
-
         else:
-            # Se non facciamo fine-tuning, creiamo direttamente il predictor dal modello base
             lightning_module = estimator.create_lightning_module()
             transformation = estimator.create_transformation()
             predictor = estimator.create_predictor(transformation, lightning_module)
 
-        # Valutazione
-        metrics_callback.start()
+        # Prediction
         forecast_it, ts_it = make_evaluation_predictions(
             dataset=test_dataset,
             predictor=predictor,
             num_samples=20
         )
-        metrics_callback.stop()
-        test_efficency_metric = metrics_callback.collect(key = 'test')
-
         forecasts = list(forecast_it)
         tss = list(ts_it)
 
         if len(forecasts) == 0:
-            print(f"[WARNING] No forecast for feature '{feature}'")
+            print(f"[WARNING] Nessun forecast per feature '{feature}'")
             continue
 
         forecast = forecasts[0]
@@ -175,13 +130,18 @@ def train_lag_llama_all_features(
 
         mae = np.mean(np.abs(predicted - original))
         rmse = np.sqrt(np.mean((predicted - original) ** 2))
-        all_metrics.append({'Feature': feature, 'MAE': mae, 'RMSE': rmse, **train_efficency_metric, **test_efficency_metric})
 
+        print(f"MAE for feature '{feature}': {mae}")
+        print(f"RMSE for feature '{feature}': {rmse}")
 
-    # Raccolta delle metriche generali
-    white_list = [ 'MAE', 'RMSE'] + list(train_efficency_metric.keys()) + list(test_efficency_metric.keys())
+        all_metrics.append({
+            "Feature": feature,
+            "MAE": mae,
+            "RMSE": rmse
+        })
+
     metrics_df = pd.DataFrame(all_metrics)
-    overall = {c: metrics_df[c].mean() for c in white_list}
+    overall_mae = metrics_df["MAE"].mean() if not metrics_df.empty else None
+    overall_rmse = metrics_df["RMSE"].mean() if not metrics_df.empty else None
 
-
-    return metrics_df, overall
+    return metrics_df, overall_mae, overall_rmse
