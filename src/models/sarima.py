@@ -5,7 +5,7 @@ import pandas as pd
 from callbacks import CallbackHandler
 
 
-def train_sarima_all_features(train_data, test_data, order=(1, 1, 1), seasonal_order=(0, 1, 1, 24)):
+def train_sarima_all_features(train_data, test_data, order=(2, 1, 2), seasonal_order=(0, 1, 1, 24)):
 
     metrics = []
     metrics_callback = CallbackHandler()

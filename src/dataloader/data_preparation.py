@@ -3,7 +3,7 @@ from sklearn.preprocessing import MinMaxScaler
 import pandas as pd
 import numpy as np
 
-def prepare_data(file_path, test_size=0.2, keep_dateandtime=False, standardize=False, minmax=False):
+def prepare_data(file_path, test_size=0.2, keep_dateandtime=False, scaled=True, minmax=True):
 
 
     data = pd.read_csv(file_path)
@@ -26,7 +26,7 @@ def prepare_data(file_path, test_size=0.2, keep_dateandtime=False, standardize=F
     test_data = numeric_data.iloc[split_idx:].copy()
 
 
-    if standardize:
+    if scaled:
         scaler = StandardScaler() if not minmax else MinMaxScaler()
         train_data = pd.DataFrame(
             scaler.fit_transform(train_data),
@@ -50,7 +50,7 @@ if __name__ == "__main__":
     
     keep_dateandtime = True 
     
-    train_data, test_data = prepare_data(file_path, keep_dateandtime=keep_dateandtime, standardize=True, minmax=True)
+    train_data, test_data = prepare_data(file_path, keep_dateandtime=keep_dateandtime, scaled=True, minmax=True)
     print(train_data.head(), len(test_data))    
 
 

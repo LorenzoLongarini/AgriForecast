@@ -1,0 +1,27 @@
+{
+  "IdSensore": "11223",
+  "Nome": "Basilico",
+  "Specie": "Ocimum basilicum",
+  "Descrizione": "Erba aromatica utilizzata in cucina",
+  "DataPiantumazione": "2024-03-10"
+}
+
+
+
+{
+  "IdSensore": "33445",
+  "Nome": "San Pedro",
+  "Specie": "Echinopsis pachanoi",
+  "Descrizione": "Cactus ornamentale che cresce in altezza",
+  "DataPiantumazione": "2021-11-05"
+}
+
+
+
+{
+  "IdSensore": "67890",
+  "Nome": "Aloe Vera",
+  "Specie": "Aloe",
+  "Descrizione": "Pianta succulenta nota per le sue proprietà curative",
+  "DataPiantumazione": "2022-08-20"
+}

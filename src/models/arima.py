@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 from callbacks import CallbackHandler
 
-def train_arima_all_features(train_data, test_data, order=(1, 1, 1)):
+def train_arima_all_features(train_data, test_data, order=(2, 1, 2)):
 
     metrics = []
     metrics_callback = CallbackHandler()

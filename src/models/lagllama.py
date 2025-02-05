@@ -25,20 +25,14 @@ class PartialFineTuneLagLlamaEstimator(LagLlamaEstimator):
     tranne gli ultimi 2.
     """
     def create_lightning_module(self):
-        # Recupera il LightningModule di base
         lightning_module = super().create_lightning_module()
-        model = lightning_module.model  # Il modello PyTorch effettivo (tipo Llama)
+        model = lightning_module.model 
 
-        # 1. Congela TUTTI i parametri
+        # Freeze layers
         for param in model.parameters():
             param.requires_grad = False
 
-        # 2. Sblocca (unfreeze) solo gli ultimi 2 layer
-        # ATTENZIONE: verifica che 'model.transformer.h' sia il nome giusto
-        # per la lista di blocchi (es: `model.layers` o `model.transformer.h`).
-        # Se il tuo modello ha 12 layer, troverai h[0]..h[11].
-        # Qui sblocchiamo solo h[-2] e h[-1].
-        for layer in model.transformer.h[-2:]:
+        for layer in model.transformer.h[-1:]:
             for param in layer.parameters():
                 param.requires_grad = True
 
@@ -50,12 +44,12 @@ def df_to_pandas_dataset(df, date_col=None, target_col=None, freq="1H"):
     df = df.set_index(date_col).sort_index()
     df = df.asfreq(freq)
 
-    # Interpolazione sui missing
+    # Interpolation 
     if df.isnull().values.any():
         print(f"[WARNING] Missing data in '{target_col}'. Filling with interpolation.")
         df = df.interpolate(method="time")
 
-    # Crea un ListDataset di GluonTS
+    # Create GluonTS ListDataset
     dataset = ListDataset(
         [{"start": df.index[0], "target": df[target_col].values}],
         freq=freq

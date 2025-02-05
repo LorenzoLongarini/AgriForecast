@@ -161,6 +161,7 @@ cython_debug/
 
 assets/*
 !assets/.gitkeep
+!assets/results-notscaled/.gitkeep
 !assets/results/.gitkeep
 .env
 src/models/lstm-attempt.py
@@ -170,3 +171,5 @@ src/test/test1.ipynb
 lag-llama.ckpt
 lightning_logs/
 torchdyno
+models
+models1
